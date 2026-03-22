@@ -1,15 +1,29 @@
-// Updated API endpoint to use Groq AI chat instead of Stripe donation
+// Import dependencies
+import { Router } from 'express';
 
-const express = require('express');
-const router = express.Router();
+// Initialize router
+const router = Router();
 
-// New endpoint for Groq AI chat
-router.post('/groq-chat', async (req, res) => {
-    // Implementation for Groq AI chat
-    const chatResponse = await groqAIChat(req.body);
-    return res.json(chatResponse);
+// GitHub OAuth endpoint
+router.get('/auth/github', (req, res) => {
+    // Your GitHub OAuth implementation
 });
 
-// Your existing endpoints
+// Publish endpoint
+router.post('/publish', (req, res) => {
+    // Your Publish implementation
+});
 
-module.exports = router;
+// Groq AI chat implementation
+router.post('/chat', async (req, res) => {
+    try {
+        const response = await axios.post('YOUR_GROQ_AI_CHAT_ENDPOINT', { 
+            message: req.body.message
+        });
+        res.status(200).send(response.data);
+    } catch (error) {
+        res.status(500).send({ error: 'Chat implementation failed', details: error.message });
+    }
+});
+
+export default router;
