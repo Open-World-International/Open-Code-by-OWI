@@ -224,7 +224,7 @@ export default function App() {
 
   const handleRun = async () => {
     if (!aiRef.current) {
-      setOutput('Error: AI is not configured. Click "Unlock AI Potential" in the sidebar and enter your Gemini API key to get started.');
+      setOutput('Error: AI is not configured. Click "G-Coder" in the sidebar and enter your Gemini API key to get started.');
       return;
     }
 
@@ -540,7 +540,7 @@ export default function App() {
               className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-blue-600 via-violet-600 to-purple-700 text-white text-xs font-bold shadow-lg shadow-blue-600/20 hover:scale-[1.02] transition-all flex items-center justify-center gap-2"
             >
               <Sparkles className="w-3.5 h-3.5" />
-              Unlock AI Potential
+              G-Coder
             </button>
           </div>
         )}
@@ -862,7 +862,7 @@ export default function App() {
                 <div className="w-16 h-16 bg-gradient-to-br from-blue-600 to-purple-700 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-600/20">
                   <Sparkles className="w-8 h-8 text-white" />
                 </div>
-                <h2 className="text-2xl font-bold text-white">Unlock AI Potential</h2>
+                <h2 className="text-2xl font-bold text-white">G-Coder</h2>
                 <p className="text-sm text-gray-400">
                   Connect your own free Gemini API key to power all AI features — no subscriptions, no shared limits.
                 </p>
