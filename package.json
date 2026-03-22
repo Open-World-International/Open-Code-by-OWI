@@ -1,5 +1,6 @@
 {
-  "name": "react-example",
+  "name": "open-code-by-owi",
+  "description": "Open-Code by OWI: A powerful AI-driven code editor and execution environment with the G-Coder engine.",
   "private": true,
   "version": "0.0.0",
   "type": "module",

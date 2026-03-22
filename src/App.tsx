@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Editor from '@monaco-editor/react';
-import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
+import { GoogleGenAI, GenerateContentResponse, Type, HarmCategory, HarmBlockThreshold } from "@google/genai";
 import { loadStripe } from "@stripe/stripe-js";
 import { 
   Eye, 
@@ -221,7 +221,7 @@ export default function App() {
 
   const handleRun = async () => {
     if (!aiRef.current) {
-      setOutput('Error: AI API key not found.');
+      setOutput('Error: G-Coder (AI Engine) is not configured. Please add GEMINI_API_KEY to your environment variables.');
       return;
     }
 
@@ -239,7 +239,14 @@ export default function App() {
           }
         ],
         config: {
-          systemInstruction: "You are a code execution engine. Your task is to simulate the execution of the provided code and return exactly what would be printed to the console. If the code has syntax errors or runtime errors, return the error message as it would appear in a terminal."
+          systemInstruction: "You are a code execution engine. Your task is to simulate the execution of the provided code and return exactly what would be printed to the console. If the code has syntax errors or runtime errors, return the error message as it would appear in a terminal.",
+          safetySettings: [
+            { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+            { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+            { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+            { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+            { category: HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY, threshold: HarmBlockThreshold.BLOCK_NONE }
+          ]
         }
       });
 
@@ -348,6 +355,15 @@ export default function App() {
     const messageToSend = overrideMessage || chatInput;
     if (!messageToSend.trim() || !aiRef.current || isAnalyzing) return;
 
+    if (!aiRef.current) {
+      setChatMessages(prev => [...prev, { 
+        role: 'model', 
+        content: 'Error: G-Coder (AI Engine) is not configured. Please add GEMINI_API_KEY to your environment variables in your hosting provider (e.g., Vercel).' 
+      }]);
+      setIsAnalyzing(false);
+      return;
+    }
+
     const userMessage = messageToSend.trim();
     setChatInput('');
     setChatMessages(prev => [...prev, { role: 'user', content: userMessage }]);
@@ -398,6 +414,13 @@ export default function App() {
           5. If you update the code in the editor, provide the FULL code in the "code" field.
           6. ALWAYS return a JSON object.`,
           responseMimeType: "application/json",
+          safetySettings: [
+            { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+            { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+            { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+            { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+            { category: HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY, threshold: HarmBlockThreshold.BLOCK_NONE }
+          ],
           responseSchema: {
             type: Type.OBJECT,
             properties: {

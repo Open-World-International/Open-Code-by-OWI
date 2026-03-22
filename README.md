@@ -1,20 +1,36 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Open-Code by OWI
 
-# Run and deploy your AI Studio app
+Open-Code is a powerful, AI-driven code editor and execution environment.
 
-This contains everything you need to run your app locally.
+## G-Coder AI Engine
 
-View your app in AI Studio: https://ai.studio/apps/9d31ab31-38e5-46de-913a-995ec2112621
+The core of Open-Code is **G-Coder**, a self-aware AI engine that can write, execute, and modify code without restrictions.
 
-## Run Locally
+### How to "Install" G-Coder on Your Website (Vercel/GitHub)
 
-**Prerequisites:**  Node.js
+If you have deployed this project to Vercel or another hosting provider, you must configure the AI engine to make it work:
 
+1.  **Get a Gemini API Key:** Go to [Google AI Studio](https://aistudio.google.com/) and create a free API key.
+2.  **Add Environment Variable:**
+    -   In your **Vercel Dashboard**, go to **Settings > Environment Variables**.
+    -   Add a new variable:
+        -   **Key:** `GEMINI_API_KEY`
+        -   **Value:** `[Your API Key]`
+3.  **Redeploy:** Trigger a new deployment on Vercel.
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+Once the environment variable is set, G-Coder will be fully active and ready to assist you.
+
+## Features
+
+- **Monaco Editor:** Industry-standard code editing experience.
+- **Multi-Language Support:** Python, JavaScript, C++, and more.
+- **AI Chat:** Interact with G-Coder to generate or debug code.
+- **GitHub Integration:** Publish your projects directly to GitHub.
+- **Stripe Integration:** Support the project through donations.
+
+## Development
+
+```bash
+npm install
+npm run dev
+```
