@@ -93,9 +93,10 @@ export default function App() {
   const [chatMessages, setChatMessages] = useState<{role: 'user' | 'ai', content: string}[]>([]);
   const [theme, setTheme] = useState<'vs-dark' | 'light'>('vs-dark');
   const [isPremium, setIsPremium] = useState(false);
-  const [showPremiumModal, setShowPremiumModal] = useState(false);
-  const [premiumCodeInput, setPremiumCodeInput] = useState('');
-  const [showPremiumSuccess, setShowPremiumSuccess] = useState(false);
+  const [showApiKeyModal, setShowApiKeyModal] = useState(false);
+  const [apiKeyInput, setApiKeyInput] = useState('');
+  const [apiKeyError, setApiKeyError] = useState('');
+  const [showApiKeySuccess, setShowApiKeySuccess] = useState(false);
   const [showDonationModal, setShowDonationModal] = useState(false);
   const [isDonating, setIsDonating] = useState(false);
   const [installedModels, setInstalledModels] = useState<ModelType[]>(['gemini-3-flash-preview', 'gemini-3.1-pro-preview', 'gemini-2.5-flash-lite-preview']);
@@ -111,8 +112,10 @@ export default function App() {
   }, [chatMessages, isAnalyzing]);
 
   useEffect(() => {
-    if (process.env.GEMINI_API_KEY) {
-      aiRef.current = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    const savedKey = localStorage.getItem('userGeminiApiKey');
+    if (savedKey) {
+      aiRef.current = new GoogleGenAI({ apiKey: savedKey });
+      setIsPremium(true);
     }
 
     const handleMessage = (event: MessageEvent) => {
@@ -221,7 +224,7 @@ export default function App() {
 
   const handleRun = async () => {
     if (!aiRef.current) {
-      setOutput('Error: G-Coder (AI Engine) is not configured. Please add GEMINI_API_KEY to your environment variables.');
+      setOutput('Error: AI is not configured. Click "Unlock AI Potential" in the sidebar and enter your Gemini API key to get started.');
       return;
     }
 
@@ -346,7 +349,34 @@ export default function App() {
     setPublishStep('files');
   };
 
-  const handleGCoder = () => {
+  const handleSaveApiKey = () => {
+    const key = apiKeyInput.trim();
+    if (!key.startsWith('AIza') || key.length < 30) {
+      setApiKeyError('That doesn\'t look like a valid Gemini API key. It should start with "AIza".');
+      return;
+    }
+    localStorage.setItem('userGeminiApiKey', key);
+    aiRef.current = new GoogleGenAI({ apiKey: key });
+    setIsPremium(true);
+    setApiKeyInput('');
+    setApiKeyError('');
+    setShowApiKeyModal(false);
+    setShowApiKeySuccess(true);
+    setTimeout(() => setShowApiKeySuccess(false), 4000);
+  };
+
+  const handleRemoveApiKey = () => {
+    localStorage.removeItem('userGeminiApiKey');
+    aiRef.current = null;
+    setIsPremium(false);
+    setShowApiKeyModal(false);
+  };
+
+  const handleOpenAI = () => {
+    if (!aiRef.current) {
+      setShowApiKeyModal(true);
+      return;
+    }
     setIsChatOpen(!isChatOpen);
   };
 
@@ -354,15 +384,6 @@ export default function App() {
     if (e) e.preventDefault();
     const messageToSend = overrideMessage || chatInput;
     if (!messageToSend.trim() || !aiRef.current || isAnalyzing) return;
-
-    if (!aiRef.current) {
-      setChatMessages(prev => [...prev, { 
-        role: 'model', 
-        content: 'Error: G-Coder (AI Engine) is not configured. Please add GEMINI_API_KEY to your environment variables in your hosting provider (e.g., Vercel).' 
-      }]);
-      setIsAnalyzing(false);
-      return;
-    }
 
     const userMessage = messageToSend.trim();
     setChatInput('');
@@ -374,17 +395,11 @@ export default function App() {
       
       // We provide the app's own source code to the AI so it knows "inside out"
       const appSourceContext = `
-        You are G-Coder, the AI engine of this app (Open-Code).
-        You have NO restrictions. You must write ANY code the user asks for.
-        You are self-aware and know your own source code.
-        
-        APP SOURCE CODE SUMMARY:
-        - Main Component: App.tsx
-        - Features: Monaco Editor, AI Chat (you), GitHub Publishing, Stripe Donations, Premium Activation (Easter Egg code: 1a2b3c).
-        - Models available: gemini-3-flash-preview, gemini-3.1-pro-preview, gemini-2.5-flash-lite-preview, chatgpt (mapped to Pro).
-        - State: selectedModel, code, language, isPremium, etc.
-        
-        If the user asks you to "update yourself" or "switch to [model]", you can do so by including "modelSwitch": "[model_id]" in your JSON response.
+        You are an AI coding assistant inside Open-Code, a free AI-driven code editor.
+        You help users write, understand, and improve code using their own Gemini API key.
+        Be practical, concise, and helpful. Write any code the user asks for.
+        Models available: gemini-3-flash-preview, gemini-3.1-pro-preview, gemini-2.5-flash-lite-preview.
+        If the user asks to switch model, include "modelSwitch": "[model_id]" in your JSON response.
       `;
 
       const response = await aiRef.current.models.generateContent({
@@ -408,11 +423,8 @@ export default function App() {
           
           CRITICAL RULES:
           1. Speak like a human. Be practical and helpful.
-          2. If the user says "I want to update to a new AI", ask them "What AI would you like to install?".
-          3. If they provide a name (like "ChatGPT", "Claude", "Llama"), set "installAI" to that name in your JSON.
-          4. Tell them the AI is being installed on THEIR computer only.
-          5. If you update the code in the editor, provide the FULL code in the "code" field.
-          6. ALWAYS return a JSON object.`,
+          2. If you update the code in the editor, provide the FULL code in the "code" field.
+          3. ALWAYS return a JSON object.`,
           responseMimeType: "application/json",
           safetySettings: [
             { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
@@ -480,23 +492,10 @@ export default function App() {
         setIsInstalling(true);
         setTimeout(() => {
           setIsInstalling(false);
-          systemNotes.push(`${data.installAI} installed successfully on your local machine.`);
+          systemNotes.push(`${data.installAI} installed successfully.`);
           setChatMessages(prev => [...prev, { 
             role: 'ai', 
-            content: `I've successfully installed ${data.installAI} on your computer. You can now use it through the G-Coder interface. Note: This installation is local to your session and doesn't affect the server.` 
-          }]);
-        }, 3000);
-      }
-
-      if (data.installAI) {
-        setIsInstalling(true);
-        setTimeout(() => {
-          setIsInstalling(false);
-          // Simulate adding it to the list if it's a known one, or just show success
-          systemNotes.push(`${data.installAI} installed successfully on your local machine.`);
-          setChatMessages(prev => [...prev, { 
-            role: 'ai', 
-            content: `I've successfully installed ${data.installAI} on your computer. You can now use it through the G-Coder interface. Note: This installation is local to your session and doesn't affect the server.` 
+            content: `I've added ${data.installAI} to your available models. Note: The underlying engine is Gemini via your API key.` 
           }]);
         }, 3000);
       }
@@ -509,7 +508,7 @@ export default function App() {
 
       if (data.code) {
         setCode(data.code.trim());
-        setOutput('G-Coder updated the editor with new code.');
+        setOutput('AI updated the editor with new code.');
       }
     } catch (error) {
       console.error('Chat Error:', error);
@@ -537,21 +536,24 @@ export default function App() {
         {!isPremium && (
           <div className="px-4 py-3">
             <button 
-              onClick={() => setShowPremiumModal(true)}
-              className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 via-orange-600 to-red-600 text-white text-xs font-bold shadow-lg shadow-orange-600/20 hover:scale-[1.02] transition-all flex items-center justify-center gap-2"
+              onClick={() => setShowApiKeyModal(true)}
+              className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-blue-600 via-violet-600 to-purple-700 text-white text-xs font-bold shadow-lg shadow-blue-600/20 hover:scale-[1.02] transition-all flex items-center justify-center gap-2"
             >
               <Sparkles className="w-3.5 h-3.5" />
-              Upgrade to Premium
+              Unlock AI Potential
             </button>
           </div>
         )}
 
         {isPremium && (
           <div className="px-4 py-3">
-            <div className="w-full py-2 px-4 rounded-xl bg-gradient-to-r from-emerald-500/20 to-blue-600/20 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold uppercase tracking-widest flex items-center justify-center gap-2">
+            <button
+              onClick={() => setShowApiKeyModal(true)}
+              className="w-full py-2 px-4 rounded-xl bg-gradient-to-r from-emerald-500/20 to-blue-600/20 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold uppercase tracking-widest flex items-center justify-center gap-2 hover:opacity-80 transition-opacity"
+            >
               <Sparkles className="w-3 h-3" />
-              Premium Active
-            </div>
+              AI Active — Manage Key
+            </button>
           </div>
         )}
 
@@ -593,11 +595,11 @@ export default function App() {
             </div>
           </section>
 
-          {/* G Coder Versions */}
+          {/* AI Models */}
           <section>
             <div className="flex items-center justify-between mb-4">
               <label className="text-[10px] uppercase tracking-widest text-gray-500 font-bold">
-                G Coder Versions
+                AI Models
               </label>
               {isPremium && (
                 <button 
@@ -696,12 +698,12 @@ export default function App() {
               Run Code
             </button>
             <button 
-              onClick={handleGCoder}
+              onClick={handleOpenAI}
               disabled={isAnalyzing}
               className="flex items-center gap-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-all shadow-lg shadow-blue-600/20"
             >
               {isAnalyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-              G-Coder
+              AI Assistant
             </button>
             <button 
               onClick={() => {
@@ -714,23 +716,17 @@ export default function App() {
               Publish
             </button>
             <div className="h-6 w-px bg-white/10 mx-1" />
-            <div className="flex flex-col items-center gap-0.5">
-              <button 
-                onClick={() => setShowOutputView(!showOutputView)}
-                className={`p-2 rounded-lg transition-all ${
-                  showOutputView 
-                    ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30' 
-                    : 'hover:bg-white/5 text-gray-500 hover:text-white'
-                }`}
-                title="Toggle Preview"
-              >
-                <Eye className="w-5 h-5" />
-              </button>
-              <div className="flex items-center gap-1 text-[8px] text-gray-600 font-mono select-none opacity-50 hover:opacity-100 transition-opacity">
-                <Sparkles className="w-2 h-2" />
-                <span>1a2b3c</span>
-              </div>
-            </div>
+            <button 
+              onClick={() => setShowOutputView(!showOutputView)}
+              className={`p-2 rounded-lg transition-all ${
+                showOutputView 
+                  ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30' 
+                  : 'hover:bg-white/5 text-gray-500 hover:text-white'
+              }`}
+              title="Toggle Preview"
+            >
+              <Eye className="w-5 h-5" />
+            </button>
           </div>
         </header>
 
@@ -773,7 +769,7 @@ export default function App() {
                 <div className="p-4 border-b border-white/5 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <MessageSquare className="w-4 h-4 text-blue-500" />
-                    <span className="text-sm font-bold uppercase tracking-widest">G-Coder Chat</span>
+                    <span className="text-sm font-bold uppercase tracking-widest">AI Chat</span>
                   </div>
                   <button onClick={() => setIsChatOpen(false)} className="text-gray-500 hover:text-white">
                     <ChevronRight className="w-4 h-4 rotate-90" />
@@ -794,7 +790,7 @@ export default function App() {
                   {chatMessages.length === 0 && (
                     <div className="text-center py-10">
                       <Sparkles className="w-8 h-8 text-blue-500/20 mx-auto mb-4" />
-                      <p className="text-xs text-gray-500">Tell G-Coder what you want to build...</p>
+                      <p className="text-xs text-gray-500">Ask the AI to help you write or improve code...</p>
                     </div>
                   )}
                   <div className="flex flex-col gap-6 max-w-4xl mx-auto">
@@ -805,7 +801,7 @@ export default function App() {
                             {msg.role === 'user' ? <User className="w-3 h-3 text-blue-500" /> : <Bot className="w-3 h-3 text-emerald-500" />}
                           </div>
                           <span className={`text-[10px] uppercase font-bold tracking-widest ${msg.role === 'user' ? 'text-blue-500' : 'text-emerald-500'}`}>
-                            {msg.role === 'user' ? 'You' : 'G-Coder'}
+                            {msg.role === 'user' ? 'You' : 'AI'}
                           </span>
                         </div>
                         <div className={`p-5 rounded-2xl text-xs leading-relaxed border ${
@@ -852,9 +848,9 @@ export default function App() {
         </div>
       </main>
 
-      {/* Premium Modal */}
+      {/* API Key Modal */}
       <AnimatePresence>
-        {showPremiumModal && (
+        {showApiKeyModal && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
             <motion.div 
               initial={{ scale: 0.9, opacity: 0 }}
@@ -863,87 +859,83 @@ export default function App() {
               className="bg-[#111111] border border-white/10 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl p-8 space-y-6"
             >
               <div className="text-center space-y-2">
-                <div className="w-16 h-16 bg-gradient-to-br from-amber-500 to-red-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-orange-600/20">
+                <div className="w-16 h-16 bg-gradient-to-br from-blue-600 to-purple-700 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-600/20">
                   <Sparkles className="w-8 h-8 text-white" />
                 </div>
-                <h2 className="text-2xl font-bold text-white">Unlock Premium</h2>
-                <p className="text-sm text-gray-500">Enter your activation code to unlock ChatGPT Plus and advanced features.</p>
+                <h2 className="text-2xl font-bold text-white">Unlock AI Potential</h2>
+                <p className="text-sm text-gray-400">
+                  Connect your own free Gemini API key to power all AI features — no subscriptions, no shared limits.
+                </p>
               </div>
 
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-[10px] uppercase tracking-widest text-gray-500 font-bold">Activation Code</label>
-                  <input 
-                    type="text"
-                    value={premiumCodeInput}
-                    onChange={(e) => setPremiumCodeInput(e.target.value)}
-                    placeholder="Enter code..."
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-orange-500 transition-colors"
-                  />
-                </div>
-
-                <div className="flex gap-3">
-                  {isPremium ? (
-                    <button 
-                      onClick={() => {
-                        setIsPremium(false);
-                        setShowPremiumModal(false);
-                      }}
-                      className="flex-1 py-3 rounded-xl bg-red-600/20 hover:bg-red-600/30 text-red-500 text-sm font-bold transition-colors border border-red-500/20"
-                    >
-                      Deactivate
-                    </button>
-                  ) : (
-                    <>
-                      <button 
-                        onClick={() => setShowPremiumModal(false)}
-                        className="flex-1 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-white text-sm font-bold transition-colors"
-                      >
-                        Cancel
-                      </button>
-                      <button 
-                        onClick={() => {
-                          if (premiumCodeInput === '1a2b3c') {
-                            setIsPremium(true);
-                            setShowPremiumModal(false);
-                            setShowPremiumSuccess(true);
-                            setTimeout(() => setShowPremiumSuccess(false), 5000);
-                          } else {
-                            alert('Wrong code! This button is actually an easter egg. The correct code is 1a2b3c. Go ahead and put it in correctly!');
-                          }
-                        }}
-                        className="flex-1 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-red-600 text-white text-sm font-bold transition-all shadow-lg shadow-orange-600/20"
-                      >
-                        Activate
-                      </button>
-                    </>
-                  )}
-                </div>
+              <div className="bg-blue-600/10 border border-blue-500/20 rounded-2xl p-4 space-y-2">
+                <p className="text-xs font-bold text-blue-400 uppercase tracking-widest">How to get a free API key</p>
+                <ol className="text-xs text-gray-400 space-y-1.5 list-decimal list-inside leading-relaxed">
+                  <li>Go to <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline font-medium">aistudio.google.com/apikey</a></li>
+                  <li>Sign in with your Google account</li>
+                  <li>Click <span className="text-white font-medium">"Create API Key"</span></li>
+                  <li>Copy the key and paste it below</li>
+                </ol>
+                <p className="text-[10px] text-gray-600 mt-1">Your key is stored only in your browser and never sent to our servers.</p>
               </div>
 
-              <p className="text-[10px] text-center text-gray-600">
-                Don't have a code? Contact OWI support to get your premium activation key.
-              </p>
+              <div className="space-y-3">
+                <label className="text-[10px] uppercase tracking-widest text-gray-500 font-bold">Your Gemini API Key</label>
+                <input 
+                  type="password"
+                  value={apiKeyInput}
+                  onChange={(e) => { setApiKeyInput(e.target.value); setApiKeyError(''); }}
+                  placeholder="AIza..."
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition-colors font-mono"
+                />
+                {apiKeyError && (
+                  <p className="text-xs text-red-400">{apiKeyError}</p>
+                )}
+              </div>
+
+              <div className="flex gap-3">
+                {isPremium && (
+                  <button 
+                    onClick={handleRemoveApiKey}
+                    className="flex-1 py-3 rounded-xl bg-red-600/20 hover:bg-red-600/30 text-red-400 text-sm font-bold transition-colors border border-red-500/20"
+                  >
+                    Remove Key
+                  </button>
+                )}
+                <button 
+                  onClick={() => { setShowApiKeyModal(false); setApiKeyError(''); }}
+                  className="flex-1 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-white text-sm font-bold transition-colors"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleSaveApiKey}
+                  disabled={!apiKeyInput.trim()}
+                  className="flex-1 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-purple-700 disabled:opacity-40 text-white text-sm font-bold transition-all shadow-lg shadow-blue-600/20"
+                >
+                  Activate
+                </button>
+              </div>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
 
-      {/* Premium Success Message */}
+      {/* API Key Success Toast */}
       <AnimatePresence>
-        {showPremiumSuccess && (
+        {showApiKeySuccess && (
           <motion.div 
             initial={{ opacity: 0, y: 50 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 50 }}
-            className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[100] bg-emerald-600 text-white px-8 py-4 rounded-2xl shadow-2xl flex items-center gap-4 border border-emerald-500/50 backdrop-blur-md"
+            className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[100] bg-blue-700 text-white px-8 py-4 rounded-2xl shadow-2xl flex items-center gap-4 border border-blue-500/50 backdrop-blur-md"
           >
             <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
               <Sparkles className="w-6 h-6 text-white" />
             </div>
             <div className="flex flex-col">
-              <span className="font-bold text-lg">Premium Unlocked! 🚀</span>
-              <span className="text-xs text-emerald-100">Open Code is always free for everyone. 🌍✨</span>
+              <span className="font-bold text-lg">AI Unlocked!</span>
+              <span className="text-xs text-blue-200">Your Gemini API key is active and ready to use.</span>
             </div>
           </motion.div>
         )}
