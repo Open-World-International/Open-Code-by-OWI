@@ -75,7 +75,12 @@ export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isPublishModalOpen, setIsPublishModalOpen] = useState(false);
-  const [publishStep, setPublishStep] = useState<'instructions' | 'files'>('instructions');
+  const [publishStep, setPublishStep] = useState<'login' | 'config' | 'publishing' | 'success'>('login');
+  const [githubToken, setGithubToken] = useState<string | null>(null);
+  const [repoName, setRepoName] = useState('my-open-code-project');
+  const [publishUrl, setPublishUrl] = useState('');
+  const [publishError, setPublishError] = useState('');
+  const [isPublishing, setIsPublishing] = useState(false);
   const [domain, setDomain] = useState('');
   const [domainIp, setDomainIp] = useState('');
   const [chatInput, setChatInput] = useState('');
@@ -94,7 +99,63 @@ export default function App() {
     if (process.env.GEMINI_API_KEY) {
       aiRef.current = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
     }
+
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'GITHUB_AUTH_SUCCESS') {
+        setGithubToken(event.data.token);
+        setPublishStep('config');
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
   }, []);
+
+  const handleGitHubLogin = () => {
+    const width = 600;
+    const height = 700;
+    const left = window.screenX + (window.outerWidth - width) / 2;
+    const top = window.screenY + (window.outerHeight - height) / 2;
+    
+    window.open(
+      '/api/auth/github',
+      'github_oauth',
+      `width=${width},height=${height},left=${left},top=${top}`
+    );
+  };
+
+  const handlePublishToGitHub = async () => {
+    if (!githubToken || !repoName) return;
+    
+    setIsPublishing(true);
+    setPublishStep('publishing');
+    setPublishError('');
+
+    try {
+      const response = await fetch('/api/publish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: githubToken,
+          repoName,
+          description: "Created with Open-Code"
+        })
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        setPublishUrl(data.url);
+        setPublishStep('success');
+      } else {
+        throw new Error(data.error || 'Failed to publish');
+      }
+    } catch (error: any) {
+      console.error('Publish Error:', error);
+      setPublishError(error.message);
+      setPublishStep('config');
+    } finally {
+      setIsPublishing(false);
+    }
+  };
 
   const handleDonate = async () => {
     console.log("Donation process started...");
@@ -482,7 +543,7 @@ export default function App() {
             </button>
             <button 
               onClick={() => {
-                setPublishStep('instructions');
+                setPublishStep(githubToken ? 'config' : 'login');
                 setIsPublishModalOpen(true);
               }}
               className="flex items-center gap-2 px-4 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-sm font-medium transition-all shadow-lg shadow-purple-600/20"
@@ -805,134 +866,134 @@ export default function App() {
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-[#111111] border border-white/10 rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl"
+              className="bg-[#111111] border border-white/10 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl"
             >
               <div className="p-8">
-                {publishStep === 'instructions' && (
+                {publishStep === 'login' && (
+                  <div className="space-y-6 text-center">
+                    <div className="w-16 h-16 bg-purple-600/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                      <Github className="w-8 h-8 text-purple-500" />
+                    </div>
+                    <div className="space-y-2">
+                      <h2 className="text-2xl font-bold text-white">Connect GitHub</h2>
+                      <p className="text-sm text-gray-500">Login with your GitHub account to sync your project.</p>
+                    </div>
+                    <button 
+                      onClick={handleGitHubLogin}
+                      className="w-full py-3 rounded-xl bg-white text-black hover:bg-gray-200 text-sm font-bold transition-all flex items-center justify-center gap-2"
+                    >
+                      <Github className="w-4 h-4" />
+                      Login with GitHub
+                    </button>
+                    <button 
+                      onClick={() => setIsPublishModalOpen(false)}
+                      className="text-xs text-gray-500 hover:text-white transition-colors"
+                    >
+                      Maybe later
+                    </button>
+                  </div>
+                )}
+
+                {publishStep === 'config' && (
                   <div className="space-y-6">
-                    <div className="text-center space-y-2">
-                      <div className="w-16 h-16 bg-purple-600/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                        <Github className="w-8 h-8 text-purple-500" />
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="w-10 h-10 bg-purple-600/20 rounded-xl flex items-center justify-center">
+                        <Github className="w-5 h-5 text-purple-500" />
                       </div>
-                      <h2 className="text-2xl font-bold text-white">Publish to GitHub</h2>
-                      <p className="text-sm text-gray-500">Follow these steps to host your project for free.</p>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="bg-white/5 p-4 rounded-2xl border border-white/5 space-y-3">
-                        <div className="w-8 h-8 bg-blue-500/20 rounded-lg flex items-center justify-center text-blue-500 font-bold text-sm">1</div>
-                        <h3 className="text-sm font-bold text-white">Create Repo</h3>
-                        <p className="text-[11px] text-gray-400 leading-relaxed">
-                          Go to <a href="https://github.com/new" target="_blank" className="text-blue-400 hover:underline">GitHub</a> and create a new public repository.
-                        </p>
-                      </div>
-                      <div className="bg-white/5 p-4 rounded-2xl border border-white/5 space-y-3">
-                        <div className="w-8 h-8 bg-purple-500/20 rounded-lg flex items-center justify-center text-purple-500 font-bold text-sm">2</div>
-                        <h3 className="text-sm font-bold text-white">Upload Files</h3>
-                        <p className="text-[11px] text-gray-400 leading-relaxed">
-                          Click "uploading an existing file" and drag your project files into the box.
-                        </p>
-                      </div>
-                      <div className="bg-white/5 p-4 rounded-2xl border border-white/5 space-y-3">
-                        <div className="w-8 h-8 bg-emerald-500/20 rounded-lg flex items-center justify-center text-emerald-500 font-bold text-sm">3</div>
-                        <h3 className="text-sm font-bold text-white">Enable Pages</h3>
-                        <p className="text-[11px] text-gray-400 leading-relaxed">
-                          In Settings &gt; Pages, select the main branch to go live!
-                        </p>
+                      <div>
+                        <h2 className="text-xl font-bold text-white">Repository Settings</h2>
+                        <p className="text-xs text-gray-500">Choose a name for your new repository.</p>
                       </div>
                     </div>
 
-                    <div className="flex gap-3 pt-4">
-                      <button 
-                        onClick={() => setIsPublishModalOpen(false)}
-                        className="flex-1 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-white text-sm font-bold transition-colors"
-                      >
-                        Cancel
-                      </button>
-                      <button 
-                        onClick={() => setPublishStep('files')}
-                        className="flex-1 py-3 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-sm font-bold transition-all shadow-lg shadow-purple-600/20 flex items-center justify-center gap-2"
-                      >
-                        View Project Files
-                        <ChevronRight className="w-4 h-4" />
-                      </button>
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <label className="text-[10px] uppercase tracking-widest text-gray-500 font-bold">Repository Name</label>
+                        <input 
+                          type="text"
+                          value={repoName}
+                          onChange={(e) => setRepoName(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))}
+                          placeholder="my-awesome-project"
+                          className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-purple-500 transition-colors"
+                        />
+                      </div>
+
+                      {publishError && (
+                        <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
+                          {publishError}
+                        </div>
+                      )}
+
+                      <div className="flex gap-3">
+                        <button 
+                          onClick={() => setIsPublishModalOpen(false)}
+                          className="flex-1 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-white text-sm font-bold transition-colors"
+                        >
+                          Cancel
+                        </button>
+                        <button 
+                          onClick={handlePublishToGitHub}
+                          disabled={!repoName || isPublishing}
+                          className="flex-1 py-3 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-sm font-bold transition-all shadow-lg shadow-purple-600/20 flex items-center justify-center gap-2"
+                        >
+                          {isPublishing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                          Publish Now
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}
 
-                {publishStep === 'files' && (
-                  <div className="space-y-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h2 className="text-xl font-bold text-white">Project Files</h2>
-                        <p className="text-xs text-gray-500">Copy these files to your GitHub repository.</p>
-                      </div>
-                      <button 
-                        onClick={() => setPublishStep('instructions')}
-                        className="text-xs text-purple-500 hover:text-purple-400 font-bold"
+                {publishStep === 'publishing' && (
+                  <div className="py-12 text-center space-y-6">
+                    <div className="relative w-20 h-20 mx-auto">
+                      <div className="absolute inset-0 border-4 border-purple-500/20 rounded-full" />
+                      <div className="absolute inset-0 border-4 border-purple-500 border-t-transparent rounded-full animate-spin" />
+                      <Github className="absolute inset-0 m-auto w-8 h-8 text-purple-500" />
+                    </div>
+                    <div className="space-y-2">
+                      <h2 className="text-xl font-bold text-white">Syncing to GitHub...</h2>
+                      <p className="text-sm text-gray-500">Creating repository and pushing your files.</p>
+                    </div>
+                  </div>
+                )}
+
+                {publishStep === 'success' && (
+                  <div className="space-y-6 text-center">
+                    <div className="w-16 h-16 bg-emerald-600/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                      <Sparkles className="w-8 h-8 text-emerald-500" />
+                    </div>
+                    <div className="space-y-2">
+                      <h2 className="text-2xl font-bold text-white">Successfully Published!</h2>
+                      <p className="text-sm text-gray-500">Your project is now live on GitHub.</p>
+                    </div>
+                    <div className="bg-white/5 p-4 rounded-2xl border border-white/5 break-all">
+                      <a 
+                        href={publishUrl} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="text-blue-400 hover:underline text-sm font-mono"
                       >
-                        Back to Instructions
+                        {publishUrl}
+                      </a>
+                    </div>
+                    <div className="flex gap-3">
+                      <button 
+                        onClick={() => setIsPublishModalOpen(false)}
+                        className="flex-1 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-white text-sm font-bold transition-colors"
+                      >
+                        Close
                       </button>
+                      <a 
+                        href={publishUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold transition-all shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2"
+                      >
+                        View on GitHub
+                        <ChevronRight className="w-4 h-4" />
+                      </a>
                     </div>
-
-                    <div className="bg-white/5 rounded-2xl border border-white/5 overflow-hidden">
-                      <div className="max-h-60 overflow-y-auto">
-                        <table className="w-full text-left text-xs">
-                          <thead className="bg-white/5 text-gray-500 uppercase tracking-widest font-bold">
-                            <tr>
-                              <th className="px-4 py-3">File Name</th>
-                              <th className="px-4 py-3">Type</th>
-                              <th className="px-4 py-3 text-right">Action</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-white/5">
-                            {[
-                              { name: 'index.html', type: 'HTML' },
-                              { name: 'App.tsx', type: 'TypeScript (React)', current: true },
-                              { name: 'main.tsx', type: 'TypeScript' },
-                              { name: 'index.css', type: 'CSS (Tailwind)' },
-                              { name: 'package.json', type: 'JSON' },
-                              { name: 'vite.config.ts', type: 'TypeScript' },
-                            ].map((file) => (
-                              <tr key={file.name} className="hover:bg-white/5 transition-colors">
-                                <td className="px-4 py-3 font-mono text-gray-300">{file.name}</td>
-                                <td className="px-4 py-3 text-gray-500">{file.type}</td>
-                                <td className="px-4 py-3 text-right">
-                                  <button 
-                                    onClick={() => {
-                                      if (file.current) {
-                                        navigator.clipboard.writeText(code);
-                                        alert('Code for App.tsx copied to clipboard!');
-                                      } else {
-                                        alert(`In a real environment, this would download ${file.name}. For now, copy your code from the editor.`);
-                                      }
-                                    }}
-                                    className="text-blue-500 hover:text-blue-400 font-bold"
-                                  >
-                                    {file.current ? 'Copy Code' : 'Download'}
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-
-                    <div className="bg-blue-600/10 border border-blue-500/20 p-4 rounded-xl flex gap-3">
-                      <Sparkles className="w-5 h-5 text-blue-500 shrink-0" />
-                      <p className="text-[11px] text-gray-400 leading-relaxed">
-                        <span className="text-white font-bold">Pro Tip:</span> You can drag and drop these files directly into the GitHub "Upload files" area. 
-                        OWI's Open-Code makes it easy to bridge the gap between development and production!
-                      </p>
-                    </div>
-
-                    <button 
-                      onClick={() => setIsPublishModalOpen(false)}
-                      className="w-full py-3 rounded-xl bg-white/5 hover:bg-white/10 text-white text-sm font-bold transition-colors"
-                    >
-                      Done
-                    </button>
                   </div>
                 )}
               </div>
