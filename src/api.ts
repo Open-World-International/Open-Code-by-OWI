@@ -122,22 +122,36 @@ router.post("/publish", async (req, res) => {
     // 1. Get user info
     const { data: user } = await octokit.rest.users.getAuthenticated();
 
-    // 2. Create repository
-    const { data: repo } = await octokit.rest.repos.createForAuthenticatedUser({
-      name: repoName,
-      description: description || "Published from Open-Code",
-      auto_init: false,
-    });
+    // 2. Create or get repository
+    let repo;
+    try {
+      const { data } = await octokit.rest.repos.get({
+        owner: user.login,
+        repo: repoName,
+      });
+      repo = data;
+    } catch (e: any) {
+      if (e.status === 404) {
+        const { data } = await octokit.rest.repos.createForAuthenticatedUser({
+          name: repoName,
+          description: description || "Published from Open-Code",
+          auto_init: false,
+        });
+        repo = data;
+      } else {
+        throw e;
+      }
+    }
 
     // 3. Read files to push
-    const filesToPush: { path: string; content: string }[] = [];
+    const filesToPush: { path: string; content: string; encoding: "utf-8" | "base64" }[] = [];
     const projectRoot = process.cwd();
 
     const walk = (dir: string) => {
       const files = fs.readdirSync(dir);
       for (const file of files) {
         const fullPath = path.join(dir, file);
-        const relativePath = path.relative(projectRoot, fullPath);
+        const relativePath = path.relative(projectRoot, fullPath).replace(/\\/g, "/");
 
         // Skip ignored files/dirs
         if (
@@ -145,7 +159,9 @@ router.post("/publish", async (req, res) => {
           file === ".git" ||
           file === "dist" ||
           file === ".env" ||
-          file === ".DS_Store"
+          file === ".DS_Store" ||
+          file === "firebase-applet-config.json" ||
+          file === "firebase-blueprint.json"
         ) {
           continue;
         }
@@ -153,48 +169,88 @@ router.post("/publish", async (req, res) => {
         if (fs.statSync(fullPath).isDirectory()) {
           walk(fullPath);
         } else {
-          const content = fs.readFileSync(fullPath, "utf-8");
-          filesToPush.push({ path: relativePath, content });
+          // Check if file is text or binary
+          const buffer = fs.readFileSync(fullPath);
+          const isBinary = buffer.some(byte => byte === 0);
+          
+          filesToPush.push({ 
+            path: relativePath, 
+            content: buffer.toString(isBinary ? "base64" : "utf-8"),
+            encoding: isBinary ? "base64" : "utf-8"
+          });
         }
       }
     };
 
     walk(projectRoot);
 
-    // 4. Create blobs and tree
+    // 4. Create blobs
     const blobs = await Promise.all(
       filesToPush.map(async (file) => {
         const { data: blob } = await octokit.rest.git.createBlob({
           owner: user.login,
           repo: repo.name,
           content: file.content,
-          encoding: "utf-8",
+          encoding: file.encoding,
         });
         return { path: file.path, sha: blob.sha, mode: "100644" as const, type: "blob" as const };
       })
     );
 
+    // 5. Get latest commit if exists
+    let baseTreeSha: string | undefined;
+    let parentCommitSha: string | undefined;
+
+    try {
+      const { data: ref } = await octokit.rest.git.getRef({
+        owner: user.login,
+        repo: repo.name,
+        ref: "heads/main",
+      });
+      parentCommitSha = ref.object.sha;
+      const { data: commit } = await octokit.rest.git.getCommit({
+        owner: user.login,
+        repo: repo.name,
+        commit_sha: parentCommitSha,
+      });
+      baseTreeSha = commit.tree.sha;
+    } catch (e) {
+      // Branch doesn't exist yet
+    }
+
+    // 6. Create tree
     const { data: tree } = await octokit.rest.git.createTree({
       owner: user.login,
       repo: repo.name,
       tree: blobs,
+      base_tree: baseTreeSha,
     });
 
-    // 5. Create commit
+    // 7. Create commit
     const { data: commit } = await octokit.rest.git.createCommit({
       owner: user.login,
       repo: repo.name,
-      message: "Initial commit from Open-Code",
+      message: `Update from Open-Code - ${new Date().toLocaleString()}`,
       tree: tree.sha,
+      parents: parentCommitSha ? [parentCommitSha] : [],
     });
 
-    // 6. Update reference
-    await octokit.rest.git.createRef({
-      owner: user.login,
-      repo: repo.name,
-      ref: "refs/heads/main",
-      sha: commit.sha,
-    });
+    // 8. Update or create reference
+    if (parentCommitSha) {
+      await octokit.rest.git.updateRef({
+        owner: user.login,
+        repo: repo.name,
+        ref: "heads/main",
+        sha: commit.sha,
+      });
+    } else {
+      await octokit.rest.git.createRef({
+        owner: user.login,
+        repo: repo.name,
+        ref: "refs/heads/main",
+        sha: commit.sha,
+      });
+    }
 
     res.json({ success: true, url: repo.html_url });
   } catch (error: any) {
